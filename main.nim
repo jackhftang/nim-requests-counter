@@ -1,29 +1,41 @@
-import jester, locks
+import jester, locks, strformat
+from math import `^`
 
-proc increment(s: string): string =
-  if s == "":
-    return "1"
+const size = 4 # size of array[size,int]
+const width = 9 # largest value of each int in array is 10^wdith 
 
-  let
-    head = s[0 .. ^2]
-    tail = s[^1]
+proc increment(arr: ptr array[size, int]) = 
+  var carry = 1
+  for i in 0..<size:
+    arr[i] += carry 
+    if arr[i] == 10^width:
+      arr[i] = 0 
+      carry = 1
+    else:
+      carry = 0
 
-  if tail == '9':
-    increment(head) & '0'
-  else:
-    head & (tail.uint8 + 1).char
+proc toString(arr: ptr array[size, int]): string = 
+  result = "0" 
+  var padZero = false
+  for i in countDown(size-1,0):
+    let n = arr[i]
+    if padZero: 
+        result = result & fmt("{n:0" & $width & "}")
+    elif n > 0: 
+      result = $n
+      padZero = true   
 
 var
   lock: Lock
-  count = createShared(string, 1)
-
+  count = createShared(array[size, int], 1)
+  
 initLock lock
 
-proc hit(): Future[string] {.async.} =
+proc hit(): Future[string] {.async, gcsafe.} =
   while true:
     if tryAcquire(lock):
-      count[] = increment(count[])
-      result = count[]
+      increment(count)
+      result = toString(count)
       release(lock)
       break
     else:
@@ -31,4 +43,4 @@ proc hit(): Future[string] {.async.} =
 
 routes:
   get "/":
-    resp await hit()
+    resp Http200, [("Keep-Alive", "timeout=5, max=1000")], await hit()
